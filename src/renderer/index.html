@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Charon</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <nav class="nav">
+    <div class="nav-brand">Agent Charon</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-page="dashboard">控制台</button>
+      <button class="nav-tab" data-page="collector">数据采集</button>
+      <button class="nav-tab" data-page="settings">设置</button>
+      <button class="nav-tab" data-page="logs">日志</button>
+    </div>
+  </nav>
+
+  <!-- 页面容器 -->
+  <main class="content">
+
+    <!-- ==================== 控制台 ==================== -->
+    <div id="page-dashboard" class="page active">
+      <div class="dashboard-grid">
+
+        <!-- 爬取卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>达人爬取</h2>
+            <span id="scraper-status" class="status-badge status-stopped">未运行</span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="scraper-today">0</span>
+                <span class="stat-label">今日已爬</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="scraper-limit">1300</span>
+                <span class="stat-label">每日上限</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="scraper-hitrate">--</span>
+                <span class="stat-label">命中率</span>
+              </div>
+            </div>
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="scraper-queue">--</span>
+                <span class="stat-label">队列剩余</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="scraper-found">0</span>
+                <span class="stat-label">本次命中</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="scraper-failed">0</span>
+                <span class="stat-label">失败</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <button id="btn-scraper-start" class="btn btn-primary">开始爬取</button>
+            <button id="btn-scraper-stop" class="btn btn-danger" disabled>停止</button>
+            <button id="btn-generate-report" class="btn btn-secondary">生成报表</button>
+            <button id="btn-import-excel" class="btn btn-secondary">导入 Excel</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="scraper-loop" checked> 自动循环（跑完等次日继续）
+            </label>
+          </div>
+        </div>
+
+        <!-- 发送卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>邮件群发</h2>
+            <span id="sender-status" class="status-badge status-stopped">未运行</span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="sender-today">0</span>
+                <span class="stat-label">今日已发</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="sender-pending">--</span>
+                <span class="stat-label">待发送</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="sender-account">--</span>
+                <span class="stat-label">当前账号</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <button id="btn-sender-start" class="btn btn-primary">开始发送</button>
+            <button id="btn-sender-stop" class="btn btn-danger" disabled>停止</button>
+            <button id="btn-sender-test" class="btn btn-secondary">测试发送</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="sender-loop"> 自动循环（跑完等次日继续）
+            </label>
+          </div>
+        </div>
+
+        <!-- IG 爬取卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>IG 达人爬取</h2>
+            <span id="ig-scraper-status" class="status-badge status-stopped">未运行</span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-today">0</span>
+                <span class="stat-label">今日已爬</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-limit">500</span>
+                <span class="stat-label">每日上限</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-hitrate">--</span>
+                <span class="stat-label">命中率</span>
+              </div>
+            </div>
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-queue">--</span>
+                <span class="stat-label">队列剩余</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-found">0</span>
+                <span class="stat-label">本次命中</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="ig-scraper-linktree">0</span>
+                <span class="stat-label">Linktree</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <button id="btn-ig-scraper-start" class="btn btn-primary">开始爬取</button>
+            <button id="btn-ig-scraper-stop" class="btn btn-danger" disabled>停止</button>
+            <button id="btn-ig-login" class="btn btn-secondary">IG 登录</button>
+            <button id="btn-ig-confirm-login" class="btn btn-secondary" style="display:none">完成登录</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="ig-scraper-loop"> 自动循环
+            </label>
+          </div>
+        </div>
+
+        <!-- YT 联系方式爬取卡片 -->
+        <div class="card">
+          <div class="card-header">
+            <h2>YT 联系方式</h2>
+            <span id="yt-contact-status" class="status-badge status-stopped">未运行</span>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-today">0</span>
+                <span class="stat-label">今日已爬</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-limit">500</span>
+                <span class="stat-label">每日上限</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-hitrate">--</span>
+                <span class="stat-label">命中率</span>
+              </div>
+            </div>
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-queue">--</span>
+                <span class="stat-label">队列剩余</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-found">0</span>
+                <span class="stat-label">本次命中</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value" id="yt-contact-failed">0</span>
+                <span class="stat-label">失败</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <button id="btn-yt-contact-start" class="btn btn-primary">开始爬取</button>
+            <button id="btn-yt-contact-stop" class="btn btn-danger" disabled>停止</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="yt-contact-loop"> 自动循环
+            </label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== 设置 ==================== -->
+    <div id="page-settings" class="page">
+
+      <!-- 数据源设置 -->
+      <div class="card">
+        <div class="card-header"><h2>数据源</h2></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>数据来源</label>
+            <select id="ds-type">
+              <option value="google-sheet">Google Sheet（在线）</option>
+              <option value="local-excel">本地 Excel 文件</option>
+            </select>
+          </div>
+
+          <div id="ds-google" class="form-section">
+            <div class="form-group">
+              <label>Google Sheet ID</label>
+              <input type="text" id="ds-sheet-id" placeholder="从 Sheet URL 中复制 ID">
+              <small>URL 格式：https://docs.google.com/spreadsheets/d/<b>这段就是ID</b>/edit</small>
+            </div>
+            <div class="form-group">
+              <label>Google 凭证文件（JSON）</label>
+              <div class="file-input">
+                <input type="text" id="ds-credentials" readonly placeholder="点击选择文件...">
+                <button class="btn btn-secondary" id="btn-pick-credentials">选择</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="ds-local" class="form-section" style="display:none">
+            <div class="form-group">
+              <label>Excel 文件路径</label>
+              <div class="file-input">
+                <input type="text" id="ds-local-path" readonly placeholder="点击选择或创建 Excel 文件...">
+                <button class="btn btn-secondary" id="btn-pick-excel">选择已有文件</button>
+                <button class="btn btn-primary" id="btn-create-excel">创建新文件</button>
+              </div>
+              <small>新文件自动包含所有需要的 sheet</small>
+            </div>
+          </div>
+
+          <hr>
+          <div class="form-group">
+            <button class="btn btn-secondary" id="btn-sync-schema">同步表格结构</button>
+            <small>自动检测并补齐缺失的 sheet，不会清除已有数据。需先保存设置。</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- 邮箱账号设置 -->
+      <div class="card">
+        <div class="card-header">
+          <h2>邮箱账号</h2>
+          <button class="btn btn-secondary btn-sm" id="btn-add-account">+ 添加账号</button>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>登录账号（用于登录阿里企业邮箱网页版）</label>
+            <input type="text" id="login-email" placeholder="登录邮箱地址">
+          </div>
+          <div class="form-group">
+            <label>登录密码</label>
+            <input type="password" id="login-password" placeholder="登录密码">
+          </div>
+          <hr>
+          <p class="hint">发件邮箱（轮流使用，可以和登录账号不同）：</p>
+          <div id="accounts-list"></div>
+        </div>
+      </div>
+
+      <!-- 邮件模板 -->
+      <div class="card">
+        <div class="card-header">
+          <h2>邮件模板</h2>
+          <button class="btn btn-secondary btn-sm" id="btn-add-template">+ 添加模板</button>
+        </div>
+        <div class="card-body">
+          <div id="templates-list"></div>
+        </div>
+      </div>
+
+      <!-- 爬取参数 -->
+      <div class="card">
+        <div class="card-header"><h2>爬取参数</h2></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>每日上限 <span class="tip">?<span class="tip-text">每天最多爬取多少个达人主页</span></span></label>
+              <input type="number" id="scrape-daily-limit" value="1300">
+            </div>
+            <div class="form-group">
+              <label>最短间隔 <span class="tip">?<span class="tip-text">两次爬取之间最少等待多少毫秒，1000毫秒=1秒</span></span></label>
+              <input type="number" id="scrape-delay-min" value="3000" placeholder="毫秒">
+            </div>
+            <div class="form-group">
+              <label>最长间隔 <span class="tip">?<span class="tip-text">两次爬取之间最多等待多少毫秒，实际间隔在最短和最长之间随机</span></span></label>
+              <input type="number" id="scrape-delay-max" value="8000" placeholder="毫秒">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>报表输出目录</label>
+            <div class="file-input">
+              <input type="text" id="scrape-report-dir" readonly placeholder="不填则默认桌面/koc报表">
+              <button class="btn btn-secondary" id="btn-pick-report-dir">选择</button>
+            </div>
+          </div>
+          <hr>
+          <div class="form-row">
+            <div class="form-group">
+              <label><input type="checkbox" id="scrape-schedule-enabled"> 定时运行</label>
+            </div>
+            <div class="form-group">
+              <label>开始时间</label>
+              <input type="time" id="scrape-schedule-start" value="08:00">
+            </div>
+            <div class="form-group">
+              <label>结束时间</label>
+              <input type="time" id="scrape-schedule-end" value="22:00">
+            </div>
+          </div>
+          <small>开启后，每天在设定时间段内自动启动爬取，到点自动停止</small>
+        </div>
+      </div>
+
+      <!-- 发送参数 -->
+      <div class="card">
+        <div class="card-header"><h2>发送参数</h2></div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>发送数据来源</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="send-source" id="send-source-tt" value="tt" checked> TK 邮箱
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="send-source" id="send-source-ig" value="ig"> IG 邮箱
+              </label>
+            </div>
+            <small>选择从哪个数据表读取待发送邮箱（TK未发送 / IG未发送）</small>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>每日发送总额 <span class="tip">?<span class="tip-text tip-wide">每天总共发多少封邮件，所有邮箱账号自动轮流发送</span></span></label>
+              <input type="number" id="send-daily-total" value="500">
+            </div>
+            <div class="form-group">
+              <label>每封收件人数 <span class="tip">?<span class="tip-text tip-wide">每封邮件塞多少个收件人。使用"分别发送"模式，每个收件人收到的是独立邮件，互相看不到</span></span></label>
+              <input type="number" id="send-batch-size" value="25">
+            </div>
+            <div class="form-group">
+              <label>发送间隔 <span class="tip">?<span class="tip-text tip-wide">根据总额、每封人数和运行时长自动计算。多账号最少20分钟，单账号最少60分钟</span></span></label>
+              <input type="text" id="send-interval-display" readonly class="input-readonly">
+            </div>
+          </div>
+          <hr>
+          <div class="form-row">
+            <div class="form-group">
+              <label><input type="checkbox" id="send-schedule-enabled"> 定时运行 <span class="tip">?<span class="tip-text tip-wide">不开启则默认全天24小时均匀发送</span></span></label>
+            </div>
+            <div class="form-group">
+              <label>开始时间</label>
+              <input type="time" id="send-schedule-start" value="00:00">
+            </div>
+            <div class="form-group">
+              <label>结束时间</label>
+              <input type="time" id="send-schedule-end" value="00:00">
+            </div>
+          </div>
+          <small>开启后，每天在设定时间段内自动启动发送，到点自动停止</small>
+        </div>
+      </div>
+
+      <!-- IG 爬取参数 -->
+      <div class="card">
+        <div class="card-header"><h2>IG 爬取参数</h2></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>每日上限</label>
+              <input type="number" id="ig-daily-limit" value="500">
+            </div>
+            <div class="form-group">
+              <label>最短间隔（毫秒）</label>
+              <input type="number" id="ig-delay-min" value="8000">
+            </div>
+            <div class="form-group">
+              <label>最长间隔（毫秒）</label>
+              <input type="number" id="ig-delay-max" value="15000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>我的邮箱（逗号分隔，防止 IG API 污染结果）</label>
+            <input type="text" id="ig-my-emails" placeholder="example@company.com, other@company.com">
+          </div>
+        </div>
+      </div>
+
+      <!-- 邮件采集配置 -->
+      <div class="card">
+        <div class="card-header"><h2>邮件数据采集 <button class="help-btn" id="btn-help-collector">?</button></h2></div>
+        <div class="card-body">
+          <p class="hint">配置 IMAP 连接以采集邮箱收发数据。如果和上面的登录账号相同可以留空。</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label>IMAP 邮箱</label>
+              <input type="text" id="collector-imap-user" placeholder="留空则使用上面的登录邮箱">
+            </div>
+            <div class="form-group">
+              <label>IMAP 密码</label>
+              <input type="password" id="collector-imap-pass" placeholder="留空则使用上面的登录密码">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>IMAP 服务器</label>
+              <input type="text" id="collector-imap-host" value="imap.qiye.aliyun.com">
+            </div>
+            <div class="form-group">
+              <label>端口</label>
+              <input type="number" id="collector-imap-port" value="993">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer" style="padding:20px 0;">
+        <button id="btn-save-settings" class="btn btn-primary btn-lg">保存所有设置</button>
+        <span id="save-feedback" class="save-feedback"></span>
+      </div>
+    </div>
+
+    <!-- ==================== 数据采集 ==================== -->
+    <div id="page-collector" class="page">
+
+      <!-- 采集状态 -->
+      <div class="card">
+        <div class="card-header">
+          <h2>邮件数据采集</h2>
+          <span id="collector-status" class="status-badge status-stopped">未运行</span>
+        </div>
+        <div class="card-body">
+          <p class="hint" style="margin-bottom:16px">连接阿里企业邮箱，读取收件箱和已发送邮件，自动汇总到本地。配置好邮箱后点击启动。</p>
+          <div class="stat-row">
+            <div class="stat">
+              <span class="stat-value" id="collector-inbox">--</span>
+              <span class="stat-label">收件箱</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" id="collector-sent">--</span>
+              <span class="stat-label">已发送</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" id="collector-total">--</span>
+              <span class="stat-label">总采集</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button id="btn-collector-start" class="btn btn-primary">启动采集</button>
+          <button id="btn-collector-stop" class="btn btn-danger" disabled>停止</button>
+          <button id="btn-collector-open-dir" class="btn btn-secondary">打开数据目录</button>
+        </div>
+      </div>
+
+      <!-- 分析报告 -->
+      <div class="card">
+        <div class="card-header">
+          <h2>邮件分析报告</h2>
+          <button class="btn btn-secondary btn-sm" id="btn-analysis-refresh">刷新</button>
+        </div>
+        <div class="card-body">
+          <div id="analysis-content">
+            <div class="lan-empty">暂无分析数据</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 采集结果预览 -->
+      <div class="card">
+        <div class="card-header">
+          <h2>采集结果</h2>
+          <button class="btn btn-secondary btn-sm" id="btn-collector-refresh">刷新</button>
+        </div>
+        <div class="card-body">
+          <div id="collector-data-list" class="collector-data-list">
+            <div class="lan-empty">启动采集后，数据将显示在这里</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 日志 ==================== -->
+    <div id="page-logs" class="page">
+      <div class="card" style="height:calc(100vh - 120px)">
+        <div class="card-header">
+          <h2>实时日志</h2>
+          <div>
+            <button class="btn btn-secondary btn-sm" id="btn-clear-logs">清空</button>
+          </div>
+        </div>
+        <div class="card-body log-container" id="log-container">
+          <div id="log-content" class="log-content"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

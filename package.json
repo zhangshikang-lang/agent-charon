@@ -1,0 +1,60 @@
+{
+  "name": "agent-charon",
+  "version": "2.1.0",
+  "description": "Agent Charon - TikTok/IG 达人邮箱爬取 + 邮件群发 + 局域网文件互传",
+  "main": "src/main/index.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "release": "electron-builder --win && node scripts/deploy-update.js"
+  },
+  "dependencies": {
+    "googleapis": "^171.4.0",
+    "node-cron": "^4.2.1",
+    "puppeteer": "^24.39.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^25.0.0",
+    "jimp": "^0.22.12",
+    "png-to-ico": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.agent-charon.outreach",
+    "productName": "Agent Charon",
+    "win": {
+      "target": "nsis",
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Agent Charon"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.business"
+    },
+    "directories": {
+      "output": "dist/${os}"
+    },
+    "files": [
+      "src/**/*",
+      "resources/**/*",
+      "!.dev-mode"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/",
+        "to": "resources/"
+      }
+    ]
+  }
+}

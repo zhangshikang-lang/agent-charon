@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>无邮箱链接导出</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+h1 { font-size: 22px; color: #333; margin-bottom: 8px; }
+.sub { color: #999; font-size: 13px; margin-bottom: 30px; }
+.drop-zone { width: 420px; height: 200px; border: 2px dashed #ccc; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all .2s; background: #fff; }
+.drop-zone:hover, .drop-zone.over { border-color: #4a90d9; background: #f0f7ff; }
+.drop-zone .icon { font-size: 40px; margin-bottom: 12px; }
+.drop-zone p { color: #666; font-size: 14px; }
+.drop-zone .hint { color: #aaa; font-size: 12px; margin-top: 8px; }
+input[type="file"] { display: none; }
+.result { margin-top: 24px; text-align: center; }
+.result .count { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 12px; }
+.result .detail { color: #999; font-size: 13px; margin-bottom: 16px; }
+.btn { background: #4a90d9; color: #fff; border: none; padding: 10px 32px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.btn:hover { background: #357abd; }
+.path-hint { margin-top: 40px; background: #fff; padding: 16px 20px; border-radius: 8px; max-width: 500px; }
+.path-hint h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
+.path-hint code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #c7254e; word-break: break-all; }
+.path-hint .step { color: #888; font-size: 12px; margin-top: 6px; line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<h1>无邮箱链接导出工具</h1>
+<p class="sub">从爬取日志中提取没有邮箱的达人链接</p>
+
+<div class="drop-zone" id="dropZone">
+  <div class="icon">📂</div>
+  <p>拖入 scrape-log.json 或点击选择</p>
+  <span class="hint">文件不会上传，所有处理在本地完成</span>
+</div>
+<input type="file" id="fileInput" accept=".json">
+
+<div class="result" id="result" style="display:none">
+  <div class="count" id="countText"></div>
+  <div class="detail" id="detailText"></div>
+  <button class="btn" id="exportBtn">导出 Excel</button>
+</div>
+
+<div class="path-hint">
+  <h3>文件在哪？</h3>
+  <div class="step">
+    1. 按 <code>Win + R</code>，输入 <code>%APPDATA%\Agent Charon\scraper-data</code>，回车<br>
+    2. 找到 <code>scrape-log.json</code>，拖到上面的框里
+  </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const result = document.getElementById('result');
+let noEmailData = [];
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if (!file.name.endsWith('.json')) { alert('请选择 .json 文件'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const log = JSON.parse(e.target.result);
+      processLog(log);
+    } catch (err) {
+      alert('文件解析失败: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function processLog(log) {
+  const scraped = log.scraped || {};
+  const total = Object.keys(scraped).length;
+  noEmailData = [];
+
+  for (const [url, entry] of Object.entries(scraped)) {
+    if (!entry.email) {
+      noEmailData.push([
+        url,
+        entry.username || '',
+        (entry.bio || '').replace(/[\r\n]+/g, ' '),
+        entry.error || '',
+        entry.at || '',
+      ]);
+    }
+  }
+
+  const withEmail = total - noEmailData.length;
+  document.getElementById('countText').textContent = `找到 ${noEmailData.length} 条无邮箱记录`;
+  document.getElementById('detailText').textContent = `总共 ${total} 条记录，其中 ${withEmail} 条有邮箱`;
+  result.style.display = 'block';
+  dropZone.querySelector('.icon').textContent = '✅';
+  dropZone.querySelector('p').textContent = '解析成功！';
+}
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if (noEmailData.length === 0) { alert('没有数据可导出'); return; }
+
+  const headers = ['TikTok链接', '用户名', '简介', '错误信息', '爬取时间'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...noEmailData]);
+  ws['!cols'] = [{ wch: 45 }, { wch: 20 }, { wch: 50 }, { wch: 30 }, { wch: 20 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '无邮箱达人');
+  XLSX.writeFile(wb, '无邮箱达人链接.xlsx');
+});
+</script>
+</body>
+</html>
