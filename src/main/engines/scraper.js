@@ -484,8 +484,9 @@ class Scraper extends EventEmitter {
           stats.failed++;
         } else {
           stats.notFound++;
-          try { await ds.addToNoEmail([url]); }
-          catch (e) { this.log(`   ⚠️ 写入无邮箱tab失败: ${e.message}`); }
+          try {
+            await ds.addToNoEmail([[url, scrapeResult.username || '', scrapeResult.followers || '', (scrapeResult.bio || '').slice(0, 200)]]);
+          } catch (e) { this.log(`   ⚠️ 写入无邮箱tab失败: ${e.message}`); }
         }
 
         try { await ds.deleteFirstQueueRow(hasHeader); }
@@ -637,10 +638,20 @@ class Scraper extends EventEmitter {
     this.log(`   今天新爬到 ${todayEntries.length} 个有邮箱的达人`);
 
     const desktopPath = require('os').homedir() + '/Desktop/koc报表';
-    const reportDir = (this.config.scraper && this.config.scraper.reportDir) || desktopPath;
+    let reportDir = (this.config.scraper && this.config.scraper.reportDir) || desktopPath;
 
+    // Mac 桌面可能无权限，创建目录失败时 fallback 到 userData
+    try {
+      if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+    } catch (e) {
+      if (e.code === 'EACCES' || e.code === 'EPERM') {
+        const { app } = require('electron');
+        reportDir = path.join(app.getPath('userData'), 'reports');
+        if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+        this.log(`   ⚠️ 桌面无写入权限，报表将保存到: ${reportDir}`);
+      } else throw e;
+    }
     const backupDir = path.join(reportDir, '备份');
-    if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
     const bjTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
@@ -678,8 +689,7 @@ class Scraper extends EventEmitter {
     const kocWb = XLSX.utils.book_new();
     const kocWs = XLSX.utils.aoa_to_sheet([KOC_HEADERS, ...kocRows]);
     XLSX.utils.book_append_sheet(kocWb, kocWs, 'Sheet1');
-    const reportPath = path.join(reportDir, `${dateLabel}，koc sample.xlsx`);
-    XLSX.writeFile(kocWb, reportPath);
+    const reportPath = this._safeWriteExcel(XLSX, kocWb, reportDir, `${dateLabel}，koc sample.xlsx`);
     this.log(`   ✅ KOC 报表 (${todayEntries.length} 条): ${reportPath}`);
 
     // 备份（3列）
@@ -688,11 +698,42 @@ class Scraper extends EventEmitter {
     const backupWb = XLSX.utils.book_new();
     const backupWs = XLSX.utils.aoa_to_sheet([backupHeaders, ...backupRows]);
     XLSX.utils.book_append_sheet(backupWb, backupWs, 'Sheet1');
-    const backupPath = path.join(backupDir, `${dateLabel}，达人备份.xlsx`);
-    XLSX.writeFile(backupWb, backupPath);
+    const backupPath = this._safeWriteExcel(XLSX, backupWb, backupDir, `${dateLabel}，达人备份.xlsx`);
     this.log(`   ✅ 备份 (${todayEntries.length} 条): ${backupPath}`);
 
     return { reportPath, backupPath, count: todayEntries.length };
+  }
+
+  _safeWriteExcel(XLSX, workbook, dir, filename) {
+    const filePath = path.join(dir, filename);
+    try {
+      XLSX.writeFile(workbook, filePath);
+      return filePath;
+    } catch (e) {
+      if (e.code === 'EACCES' || e.code === 'EPERM' || e.code === 'EBUSY') {
+        // 尝试1：换文件名（解决文件被 Excel 占用）
+        try {
+          const ext = path.extname(filename);
+          const base = path.basename(filename, ext);
+          const ts = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour12: false })
+            .replace(/[/:, ]+/g, '').slice(-6);
+          const altPath = path.join(dir, `${base}_${ts}${ext}`);
+          XLSX.writeFile(workbook, altPath);
+          this.log(`   ⚠️ 原文件被占用，已保存为: ${path.basename(altPath)}`);
+          return altPath;
+        } catch (_) {
+          // 尝试2：fallback 到 userData 目录（解决 Mac 桌面权限）
+          const { app } = require('electron');
+          const fallbackDir = path.join(app.getPath('userData'), 'reports');
+          if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+          const fallbackPath = path.join(fallbackDir, filename);
+          XLSX.writeFile(workbook, fallbackPath);
+          this.log(`   ⚠️ 桌面无写入权限，已保存到: ${fallbackPath}`);
+          return fallbackPath;
+        }
+      }
+      throw e;
+    }
   }
 }
 

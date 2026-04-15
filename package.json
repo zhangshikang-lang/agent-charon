@@ -40,7 +40,9 @@
     },
     "mac": {
       "target": ["dmg", "zip"],
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "directories": {
       "output": "dist/${os}"
