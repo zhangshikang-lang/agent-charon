@@ -9,6 +9,8 @@ const { app } = require('electron');
 const { createDataSource } = require('./data-source');
 const { findBrowserPath } = require('./browser-finder');
 const { translateError } = require('./error-i18n');
+const { sleep, randomInt, timestamp, beijingDateKey, isFatalError } = require('./utils');
+const { TABS } = require('./data-source');
 
 let puppeteer = null;
 let StealthPlugin = null;
@@ -31,15 +33,11 @@ const SKIP_DOMAINS = new Set(['instagram.com', 'facebook.com', 'meta.com', 'fbcd
 
 // ============ 工具函数 ============
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function timestamp() { return new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }); }
-function beijingDateKey() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }); }
-
 function extractEmail(text, myEmails) {
   if (!text) return null;
   const hits = text.match(EMAIL_REGEX) || [];
-  for (const e of hits) {
+  for (let e of hits) {
+    e = e.replace(/^[^a-zA-Z0-9]+/, '');
     const lower = e.toLowerCase();
     const d = lower.split('@')[1];
     if (d && !SKIP_DOMAINS.has(d) && !myEmails.has(lower)) return lower;
@@ -66,18 +64,6 @@ function normalizeIGLink(raw) {
   if (/instagram\.com/i.test(raw)) return raw; // 已经是完整链接
   const username = raw.trim().replace(/^@/, '');
   return `https://www.instagram.com/${username}`;
-}
-
-// ============ 致命错误检测 ============
-
-function isFatalError(err) {
-  const msg = (err && err.message || String(err)).toLowerCase();
-  return msg.includes('does not have permission') ||
-         msg.includes('insufficient authentication') ||
-         msg.includes('invalid_grant') ||
-         msg.includes('token has been expired') ||
-         msg.includes('enospc') ||
-         err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'ENOSPC';
 }
 
 // ============ IGScraper 引擎类 ============
@@ -154,9 +140,9 @@ class IGScraper extends EventEmitter {
     }
   }
 
-  // ============ 浏览器 ============
+  // ============ 浏览器（有头模式 + 实例复用） ============
 
-  async launchBrowser(headless = true) {
+  async launchBrowser() {
     const pup = loadPuppeteer();
     if (!fs.existsSync(this.chromeProfileDir)) fs.mkdirSync(this.chromeProfileDir, { recursive: true });
 
@@ -165,7 +151,7 @@ class IGScraper extends EventEmitter {
     this.log(`浏览器: ${executablePath}`);
 
     return await pup.launch({
-      headless,
+      headless: false,
       executablePath,
       userDataDir: this.chromeProfileDir,
       defaultViewport: null,
@@ -180,41 +166,54 @@ class IGScraper extends EventEmitter {
     });
   }
 
-  // ============ 手动登录 ============
+  /** 获取或复用浏览器实例 */
+  async getBrowser() {
+    if (this._browser) {
+      try { await this._browser.pages(); return this._browser; } catch { this._browser = null; }
+    }
+    this._browser = await this.launchBrowser();
+    return this._browser;
+  }
+
+  // ============ 登录（打开浏览器让用户手动登录） ============
 
   async login() {
-    // 关掉上次残留的登录浏览器
-    if (this._loginBrowser) {
-      await this._loginBrowser.close().catch(() => {});
-      this._loginBrowser = null;
-    }
     this.log('🌐 打开浏览器，请在窗口中登录 Instagram...');
-    const browser = await this.launchBrowser(false); // 有头模式
-    this._loginBrowser = browser;
-    const page = await browser.newPage();
+    const browser = await this.getBrowser();
+    const pages = await browser.pages();
+    const page = pages[0] || await browser.newPage();
     await page.goto('https://www.instagram.com/', { waitUntil: 'networkidle2' });
-    this.emit('login-opened'); // 通知 UI 浏览器已打开
+    this.emit('login-opened');
   }
 
   async confirmLogin() {
-    // 由 IPC 在用户点击"完成登录"按钮后调用
-    // 浏览器已处于 login() 时打开的状态，这里只需关闭
-    // 实际上通过 _loginBrowser 持有引用
-    if (this._loginBrowser) {
-      try {
-        const pages = await this._loginBrowser.pages();
-        const page = pages[0];
-        const url = page ? page.url() : '';
-        if (url.includes('/accounts/login/')) {
-          this.log('❌ 仍在登录页，请确认已完成登录');
-          return { ok: false };
-        }
-        this.log('✅ 登录成功！Cookie 已保存，可以开始爬取');
-      } catch (e) { /* ignore */ }
-      await this._loginBrowser.close().catch(() => {});
-      this._loginBrowser = null;
-    }
+    if (!this._browser) return { ok: false };
+    try {
+      const pages = await this._browser.pages();
+      const page = pages[0];
+      const url = page ? page.url() : '';
+      if (url.includes('/accounts/login/')) {
+        this.log('❌ 仍在登录页，请确认已完成登录');
+        return { ok: false };
+      }
+      this.log('✅ 登录成功！Cookie 已保存，下次启动无需再登录');
+    } catch (e) { /* ignore */ }
+    // 不关浏览器，保持复用
     return { ok: true };
+  }
+
+  /** 获取当前浏览器实例（跨实例复用，同步） */
+  getBrowserInstance() { return this._browser; }
+
+  /** 设置浏览器实例（跨实例复用） */
+  setBrowser(browser) { this._browser = browser; }
+
+  /** 关闭浏览器（引擎销毁时调用） */
+  async closeBrowser() {
+    if (this._browser) {
+      try { await this._browser.close(); } catch {}
+      this._browser = null;
+    }
   }
 
   // ============ Linktree ============
@@ -368,7 +367,7 @@ class IGScraper extends EventEmitter {
       ...this.config,
       dataSource: {
         ...this.config.dataSource,
-        tabs: { queue: 'IG待爬取', unsent: 'IG未发送', sent: 'IG已发送' },
+        tabs: { ...TABS.IG },
       },
     };
     const ds = createDataSource(igConfig);
@@ -392,13 +391,12 @@ class IGScraper extends EventEmitter {
     const maxThisRun = this.dailyLimit - todayCount;
     this.log(`📊 今日已爬: ${todayCount}，本次最多: ${maxThisRun}`);
 
-    const browser = await this.launchBrowser(true);
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
-      window.chrome = { runtime: {} };
-    });
+    // 保存旧记录快照，用于重复比对
+    const oldScraped = { ...scrapeLog.scraped };
+
+    const browser = await this.getBrowser();
+    const pages = await browser.pages();
+    let page = pages[0] || await browser.newPage();
 
     const stats = { found: 0, notFound: 0, failed: 0, linktree: 0 };
     let processed = 0;
@@ -409,39 +407,53 @@ class IGScraper extends EventEmitter {
         if (this._stopRequested) { this.log('⏹️ 用户停止'); break; }
 
         const url = queue[i];
-        if (scrapeLog.scraped[url]) {
-          try { await ds.deleteFirstQueueRow(hasHeader); }
-          catch (e) {
-            if (isFatalError(e)) {
-              this.log(`❌ 致命错误：数据源不可写，自动停止`);
-              this.emit('fatal-error', `数据写入失败: ${translateError(e.message)}`);
-              this._stopRequested = true;
-              break;
-            }
-          }
-          await sleep(1000);
-          continue;
-        }
-
-        this.log(`[${i + 1}/${queue.length}] @${extractUsername(url)}`);
+        const isDup = !!oldScraped[url];
+        if (isDup) this.log(`[${i + 1}/${queue.length}] @${extractUsername(url)} (重复，重新爬取)`);
+        else this.log(`[${i + 1}/${queue.length}] @${extractUsername(url)}`);
 
         let r = null;
         for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
           r = await this.scrapeProfile(page, url);
           if (!r.error || r.error === 'LOGIN_REQUIRED' || r.error === 'NOT_FOUND') break;
+          // detached frame: page 已废弃，换新 page 再重试
+          if (r.error.includes('detached') || r.error.includes('Detached')) {
+            try {
+              const freshPages = await browser.pages();
+              page = freshPages[0] || await browser.newPage();
+              this.log(`   🔄 页面已恢复，重试 ${attempt + 1}/${this.maxRetries}...`);
+            } catch { /* browser 也挂了，下面重试会继续报错 */ }
+            await sleep(randomInt(3000, 5000));
+            continue;
+          }
           if (attempt < this.maxRetries) {
             this.log(`   重试 ${attempt + 1}/${this.maxRetries}...`);
             await sleep(randomInt(5000, 10000));
           }
         }
 
-        // 登录失效检测
+        // 登录失效：在当前浏览器里等待用户登录
         if (r.error === 'LOGIN_REQUIRED') {
           loginFailCount++;
-          if (loginFailCount >= 3) {
-            this.log('❌ 检测到登录失效，请点击"IG 登录"重新登录后再爬取');
+          if (loginFailCount >= 2) {
+            this.log('🔐 检测到登录失效，请在弹出的浏览器窗口登录 Instagram...');
             this.emit('login-required');
-            break;
+            await page.goto('https://www.instagram.com/accounts/login/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+            // 等待用户登录，最多 5 分钟
+            let loggedIn = false;
+            for (let w = 0; w < 100 && !this._stopRequested; w++) {
+              await sleep(3000);
+              const currentUrl = page.url();
+              if (!currentUrl.includes('/accounts/login')) { loggedIn = true; break; }
+            }
+            if (!loggedIn) {
+              this.log('❌ 登录超时，停止爬取');
+              break;
+            }
+            this.log('✅ 登录成功，继续爬取...');
+            loginFailCount = 0;
+            // 回退重试当前这个 URL
+            i--;
+            continue;
           }
         }
 
@@ -460,10 +472,13 @@ class IGScraper extends EventEmitter {
           at: timestamp(),
         };
 
+        const dupNote = (isDup && oldScraped[url].email === (r.email || '')) ? '是' : '否';
+
         if (r.email) {
           stats.found++;
+          if (dupNote === '是') this.log(`   🔁 重复（数据一致）`);
           this.log(`   ✅ ${r.username} → ${r.email}${r.linktree ? ' [Linktree]' : ''}`);
-          try { await ds.addToUnsent([[url, r.username, r.email]]); }
+          try { await ds.addToUnsent([[url, r.username, r.email, '', '', dupNote]]); }
           catch (e) {
             this.log(`   ⚠️ 写入失败: ${translateError(e.message)}`);
             if (isFatalError(e)) {
@@ -473,14 +488,17 @@ class IGScraper extends EventEmitter {
               break;
             }
           }
-        } else if (r.error && r.error !== 'NOT_FOUND') {
-          stats.failed++;
-          this.log(`   ❌ ${r.username} — ${translateError(r.error)}`);
         } else {
-          stats.notFound++;
-          this.log(`   📭 ${r.username} — 无邮箱${r.linktree ? ' (Linktree无结果)' : ''}`);
-          try { await ds.addToNoEmail([url]); }
-          catch (e) { this.log(`   ⚠️ 写入无邮箱tab失败: ${e.message}`); }
+          if (r.error && r.error !== 'NOT_FOUND') {
+            stats.failed++;
+            this.log(`   ❌ ${r.username} — ${translateError(r.error)}`);
+          } else {
+            stats.notFound++;
+            this.log(`   📭 ${r.username} — 无结果${r.linktree ? ' (Linktree无结果)' : ''}`);
+          }
+          try {
+            await ds.addToNoResult([[url, r.username || '', '', (r.bio || '').slice(0, 200)]]);
+          } catch (e) { this.log(`   ⚠️ 写入无结果tab失败: ${e.message}`); }
         }
 
         try { await ds.deleteFirstQueueRow(hasHeader); }
@@ -512,8 +530,8 @@ class IGScraper extends EventEmitter {
         await sleep(randomInt(this.delayMin, this.delayMax));
       }
     } finally {
-      await page.close().catch(() => {});
-      await browser.close().catch(() => {});
+      // 浏览器保持运行，下次启动可复用
+      this.log('浏览器保持运行，下次启动可复用');
     }
 
     this.log('');

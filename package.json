@@ -1,6 +1,6 @@
 {
   "name": "agent-charon",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Agent Charon - TikTok/IG 达人邮箱爬取 + 邮件群发 + 局域网文件互传",
   "main": "src/main/index.js",
   "scripts": {
